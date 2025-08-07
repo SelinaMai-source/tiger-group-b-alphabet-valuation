@@ -306,25 +306,35 @@ def show_dashboard_overview():
         os.chdir(pe_model_path) # 使用相对路径
         
         if create_pe_valuation_dashboard:
-            results = create_pe_valuation_dashboard()
-            
-            # 切换回原目录
-            os.chdir(original_dir)
-            
-            # 计算PE目标价格
-            predicted_eps = results['eps_predictions']['blended']
-            conservative_pe = 22.0
-            pe_target_price = conservative_pe * predicted_eps
-            
-            # 确保目标价格在合理范围内
-            max_reasonable_price = current_price * 1.5
-            if pe_target_price > max_reasonable_price:
-                pe_target_price = max_reasonable_price
-            
-            min_reasonable_price = current_price * 0.5
-            if pe_target_price < min_reasonable_price:
-                pe_target_price = min_reasonable_price
-            
+            try:
+                results = create_pe_valuation_dashboard()
+                
+                # 切换回原目录
+                os.chdir(original_dir)
+                
+                # 检查results是否为字典类型
+                if isinstance(results, dict) and 'eps_predictions' in results:
+                    # 计算PE目标价格
+                    predicted_eps = results['eps_predictions']['blended']
+                    conservative_pe = 22.0
+                    pe_target_price = conservative_pe * predicted_eps
+                    
+                    # 确保目标价格在合理范围内
+                    max_reasonable_price = current_price * 1.5
+                    if pe_target_price > max_reasonable_price:
+                        pe_target_price = max_reasonable_price
+                    
+                    min_reasonable_price = current_price * 0.5
+                    if pe_target_price < min_reasonable_price:
+                        pe_target_price = min_reasonable_price
+                else:
+                    st.warning("PE模型返回结果格式错误，使用默认值")
+                    pe_target_price = 173.58  # 使用合理的默认值
+                    
+            except Exception as e:
+                st.warning(f"PE模型计算失败: {e}")
+                pe_target_price = 173.58  # 使用合理的默认值
+                os.chdir(original_dir)  # 确保切换回原目录
         else:
             st.warning("PE模型导入失败，使用默认值")
             pe_target_price = 173.58  # 使用合理的默认值
@@ -458,116 +468,125 @@ def show_pe_valuation():
                 os.chdir(pe_model_path) # 使用相对路径
                 
                 if create_pe_valuation_dashboard:
-                    results = create_pe_valuation_dashboard()
-                    
-                    # 切换回原目录
-                    os.chdir(original_dir)
-                    
-                    # 获取当前股价
-                    stock_data = get_stock_data("GOOG")
-                    current_price = stock_data['current_price'] if stock_data else 196.92
-                    
-                    # 计算目标价格 - 使用更合理的PE估值方法
-                    predicted_eps = results['eps_predictions']['blended']
-                    
-                    # 使用更保守的PE倍数计算目标价格
-                    # Alphabet作为成熟科技公司，PE倍数通常在20-30之间
-                    conservative_pe = 22.0  # 使用保守的PE倍数
-                    target_price = conservative_pe * predicted_eps
-                    
-                    # 确保目标价格在合理范围内
-                    # 1. 不超过当前股价的1.5倍
-                    max_reasonable_price = current_price * 1.5
-                    if target_price > max_reasonable_price:
-                        target_price = max_reasonable_price
-                    
-                    # 2. 不低于当前股价的0.5倍
-                    min_reasonable_price = current_price * 0.5
-                    if target_price < min_reasonable_price:
-                        target_price = min_reasonable_price
-                    
-                    # 生成投资建议
-                    recommendation, recommendation_type = get_investment_recommendation(
-                        current_price, target_price, results['valuation_summary']['confidence_score']
-                    )
-                    
-                    # 显示结果
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("当前股价", f"${current_price:.2f}")
-                    
-                    with col2:
-                        st.metric("目标价格", f"${target_price:.2f}")
-                    
-                    with col3:
-                        price_change = ((target_price - current_price) / current_price) * 100
-                        st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
-                    
-                    with col4:
-                        st.metric("置信度", f"{results['valuation_summary']['confidence_score']}%")
-                    
-                    # 投资建议卡片
-                    st.subheader("💡 投资建议")
-                    
-                    # 根据建议类型设置颜色
-                    if recommendation_type == "buy":
-                        color = "success"
-                        icon = "🚀"
-                    elif recommendation_type == "cautious_buy":
-                        color = "info"
-                        icon = "📈"
-                    elif recommendation_type == "hold":
-                        color = "warning"
-                        icon = "⏸️"
-                    elif recommendation_type == "cautious_hold":
-                        color = "warning"
-                        icon = "⚠️"
-                    else:
-                        color = "error"
-                        icon = "❌"
-                    
-                    st.markdown(f"""
-                    <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
-                        <h4>{icon} {recommendation}</h4>
-                        <ul>
-                        <li><strong>当前股价：</strong> ${current_price:.2f}</li>
-                        <li><strong>目标价格：</strong> ${target_price:.2f}</li>
-                        <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
-                        <li><strong>模型置信度：</strong> {results['valuation_summary']['confidence_score']}%</li>
-                        <li><strong>估值方法：</strong> PE估值模型</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # EPS预测对比图
-                    st.subheader("🔮 EPS预测模型对比")
-                    eps_data = pd.DataFrame({
-                        '模型': ['三表建模', 'ARIMA', '可比公司', '融合预测'],
-                        'EPS预测': [
-                            results['eps_predictions']['three_statement'],
-                            results['eps_predictions']['arima'],
-                            results['eps_predictions']['comparable'],
-                            results['eps_predictions']['blended']
-                        ]
-                    })
-                    
-                    fig = px.bar(eps_data, x='模型', y='EPS预测', 
-                               color='EPS预测', color_continuous_scale='viridis',
-                               title="Alphabet EPS预测模型对比")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 权重分配饼图
-                    st.subheader("⚖️ 模型权重分配")
-                    weights_data = pd.DataFrame({
-                        '模型': ['三表建模', 'ARIMA', '可比公司'],
-                        '权重': [0.2, 0.4, 0.4]
-                    })
-                    
-                    fig_pie = px.pie(weights_data, values='权重', names='模型',
-                                   title="模型权重分配")
-                    st.plotly_chart(fig_pie, use_container_width=True)
-                    
+                    try:
+                        results = create_pe_valuation_dashboard()
+                        
+                        # 切换回原目录
+                        os.chdir(original_dir)
+                        
+                        # 检查results是否为字典类型
+                        if isinstance(results, dict) and 'eps_predictions' in results:
+                            # 获取当前股价
+                            stock_data = get_stock_data("GOOG")
+                            current_price = stock_data['current_price'] if stock_data else 196.92
+                            
+                            # 计算目标价格 - 使用更合理的PE估值方法
+                            predicted_eps = results['eps_predictions']['blended']
+                            
+                            # 使用更保守的PE倍数计算目标价格
+                            # Alphabet作为成熟科技公司，PE倍数通常在20-30之间
+                            conservative_pe = 22.0  # 使用保守的PE倍数
+                            target_price = conservative_pe * predicted_eps
+                            
+                            # 确保目标价格在合理范围内
+                            # 1. 不超过当前股价的1.5倍
+                            max_reasonable_price = current_price * 1.5
+                            if target_price > max_reasonable_price:
+                                target_price = max_reasonable_price
+                            
+                            # 2. 不低于当前股价的0.5倍
+                            min_reasonable_price = current_price * 0.5
+                            if target_price < min_reasonable_price:
+                                target_price = min_reasonable_price
+                            
+                            # 生成投资建议
+                            recommendation, recommendation_type = get_investment_recommendation(
+                                current_price, target_price, results['valuation_summary']['confidence_score']
+                            )
+                            
+                            # 显示结果
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("当前股价", f"${current_price:.2f}")
+                            
+                            with col2:
+                                st.metric("目标价格", f"${target_price:.2f}")
+                            
+                            with col3:
+                                price_change = ((target_price - current_price) / current_price) * 100
+                                st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
+                            
+                            with col4:
+                                st.metric("置信度", f"{results['valuation_summary']['confidence_score']}%")
+                            
+                            # 投资建议卡片
+                            st.subheader("💡 投资建议")
+                            
+                            # 根据建议类型设置颜色
+                            if recommendation_type == "buy":
+                                color = "success"
+                                icon = "🚀"
+                            elif recommendation_type == "cautious_buy":
+                                color = "info"
+                                icon = "📈"
+                            elif recommendation_type == "hold":
+                                color = "warning"
+                                icon = "⏸️"
+                            elif recommendation_type == "cautious_hold":
+                                color = "warning"
+                                icon = "⚠️"
+                            else:
+                                color = "error"
+                                icon = "❌"
+                            
+                            st.markdown(f"""
+                            <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
+                                <h4>{icon} {recommendation}</h4>
+                                <ul>
+                                <li><strong>当前股价：</strong> ${current_price:.2f}</li>
+                                <li><strong>目标价格：</strong> ${target_price:.2f}</li>
+                                <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
+                                <li><strong>模型置信度：</strong> {results['valuation_summary']['confidence_score']}%</li>
+                                <li><strong>估值方法：</strong> PE估值模型</li>
+                                </ul>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # EPS预测对比图
+                            st.subheader("🔮 EPS预测模型对比")
+                            eps_data = pd.DataFrame({
+                                '模型': ['三表建模', 'ARIMA', '可比公司', '融合预测'],
+                                'EPS预测': [
+                                    results['eps_predictions']['three_statement'],
+                                    results['eps_predictions']['arima'],
+                                    results['eps_predictions']['comparable'],
+                                    results['eps_predictions']['blended']
+                                ]
+                            })
+                            
+                            fig = px.bar(eps_data, x='模型', y='EPS预测', 
+                                       color='EPS预测', color_continuous_scale='viridis',
+                                       title="Alphabet EPS预测模型对比")
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # 权重分配饼图
+                            st.subheader("⚖️ 模型权重分配")
+                            weights_data = pd.DataFrame({
+                                '模型': ['三表建模', 'ARIMA', '可比公司'],
+                                '权重': [0.2, 0.4, 0.4]
+                            })
+                            
+                            fig_pie = px.pie(weights_data, values='权重', names='模型',
+                                           title="模型权重分配")
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                            
+                        else:
+                            st.error("PE模型返回结果格式错误，无法运行估值分析")
+                            
+                    except Exception as e:
+                        st.error(f"PE模型计算失败: {e}")
+                        os.chdir(original_dir)  # 确保切换回原目录
                 else:
                     st.error("PE模型导入失败，无法运行估值分析")
                 
@@ -978,25 +997,35 @@ def show_comprehensive_comparison():
         os.chdir(pe_model_path) # 使用相对路径
         
         if create_pe_valuation_dashboard:
-            results = create_pe_valuation_dashboard()
-            
-            # 切换回原目录
-            os.chdir(original_dir)
-            
-            # 计算PE目标价格
-            predicted_eps = results['eps_predictions']['blended']
-            conservative_pe = 22.0
-            pe_target_price = conservative_pe * predicted_eps
-            
-            # 确保目标价格在合理范围内
-            max_reasonable_price = current_price * 1.5
-            if pe_target_price > max_reasonable_price:
-                pe_target_price = max_reasonable_price
-            
-            min_reasonable_price = current_price * 0.5
-            if pe_target_price < min_reasonable_price:
-                pe_target_price = min_reasonable_price
-            
+            try:
+                results = create_pe_valuation_dashboard()
+                
+                # 切换回原目录
+                os.chdir(original_dir)
+                
+                # 检查results是否为字典类型
+                if isinstance(results, dict) and 'eps_predictions' in results:
+                    # 计算PE目标价格
+                    predicted_eps = results['eps_predictions']['blended']
+                    conservative_pe = 22.0
+                    pe_target_price = conservative_pe * predicted_eps
+                    
+                    # 确保目标价格在合理范围内
+                    max_reasonable_price = current_price * 1.5
+                    if pe_target_price > max_reasonable_price:
+                        pe_target_price = max_reasonable_price
+                    
+                    min_reasonable_price = current_price * 0.5
+                    if pe_target_price < min_reasonable_price:
+                        pe_target_price = min_reasonable_price
+                else:
+                    st.warning("PE模型返回结果格式错误，使用默认值")
+                    pe_target_price = 173.58  # 使用合理的默认值
+                    
+            except Exception as e:
+                st.warning(f"PE模型计算失败: {e}")
+                pe_target_price = 173.58  # 使用合理的默认值
+                os.chdir(original_dir)  # 确保切换回原目录
         else:
             st.warning("PE模型导入失败，使用默认值")
             pe_target_price = 173.58  # 使用合理的默认值
