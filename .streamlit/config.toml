@@ -9,6 +9,7 @@ port = 8501
 maxUploadSize = 200
 runOnSave = false
 fileWatcherType = "none"
+allowRunOnSave = false
 
 [browser]
 gatherUsageStats = false
@@ -26,3 +27,9 @@ level = "info"
 
 [client]
 showErrorDetails = true
+
+[runner]
+# 允许公开访问
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
