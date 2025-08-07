@@ -24,9 +24,11 @@ try:
     sys.path.append(pe_model_path)
     try:
         from pe_visual import create_pe_valuation_dashboard
-    except ImportError:
-        st.warning("PE模型导入失败，将使用备用功能")
+        pe_model_available = True
+    except ImportError as e:
+        st.warning(f"PE模型导入失败：{e}，将使用备用功能")
         create_pe_valuation_dashboard = None
+        pe_model_available = False
     
     # DCF模型
     dcf_model_path = os.path.join(project_root, 'valuation_models', 'dcf_model')
@@ -305,7 +307,7 @@ def show_dashboard_overview():
         original_dir = os.getcwd()
         os.chdir(pe_model_path) # 使用相对路径
         
-        if create_pe_valuation_dashboard:
+        if pe_model_available and create_pe_valuation_dashboard is not None:
             try:
                 results = create_pe_valuation_dashboard()
                 
@@ -466,7 +468,7 @@ def show_pe_valuation():
                 # 切换到PE模型目录
                 os.chdir(pe_model_path) # 使用相对路径
                 
-                if create_pe_valuation_dashboard:
+                if pe_model_available and create_pe_valuation_dashboard is not None:
                     try:
                         results = create_pe_valuation_dashboard()
                         
@@ -997,7 +999,7 @@ def show_comprehensive_comparison():
         original_dir = os.getcwd()
         os.chdir(pe_model_path) # 使用相对路径
         
-        if create_pe_valuation_dashboard:
+        if pe_model_available and create_pe_valuation_dashboard is not None:
             try:
                 results = create_pe_valuation_dashboard()
                 
