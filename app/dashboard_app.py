@@ -580,10 +580,12 @@ def show_pe_valuation():
                             st.plotly_chart(fig_pie, use_container_width=True)
                             
                         else:
-                            st.error("PE模型返回结果格式错误，无法运行估值分析")
+                            st.error(f"PE模型返回结果格式错误，期望字典类型，实际得到: {type(results)}")
+                            st.info("请检查PE模型实现是否正确返回字典格式的结果")
                             
                     except Exception as e:
                         st.error(f"PE模型计算失败: {e}")
+                        st.info("请确保PE模型相关文件存在且路径正确")
                 else:
                     st.error("PE模型导入失败，无法运行估值分析")
                 
