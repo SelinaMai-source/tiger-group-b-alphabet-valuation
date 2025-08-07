@@ -312,6 +312,10 @@ def show_dashboard_overview():
                 # 切换回原目录
                 os.chdir(original_dir)
                 
+                # 添加调试信息
+                st.write(f"🔍 PE模型返回结果类型: {type(results)}")
+                st.write(f"🔍 PE模型返回结果内容: {results}")
+                
                 # 检查results是否为字典类型
                 if isinstance(results, dict) and 'eps_predictions' in results:
                     # 计算PE目标价格
@@ -327,8 +331,11 @@ def show_dashboard_overview():
                     min_reasonable_price = current_price * 0.5
                     if pe_target_price < min_reasonable_price:
                         pe_target_price = min_reasonable_price
+                        
+                    st.success(f"✅ PE模型计算成功，目标价格: ${pe_target_price:.2f}")
                 else:
-                    st.warning("PE模型返回结果格式错误，使用默认值")
+                    st.warning(f"PE模型返回结果格式错误，期望字典类型，实际得到: {type(results)}")
+                    st.warning(f"返回内容: {results}")
                     pe_target_price = 173.58  # 使用合理的默认值
                     
             except Exception as e:
