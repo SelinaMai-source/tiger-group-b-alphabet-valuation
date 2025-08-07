@@ -312,10 +312,6 @@ def show_dashboard_overview():
                 # 切换回原目录
                 os.chdir(original_dir)
                 
-                # 添加调试信息
-                st.write(f"🔍 PE模型返回结果类型: {type(results)}")
-                st.write(f"🔍 PE模型返回结果内容: {results}")
-                
                 # 检查results是否为字典类型
                 if isinstance(results, dict) and 'eps_predictions' in results:
                     # 计算PE目标价格
@@ -331,11 +327,8 @@ def show_dashboard_overview():
                     min_reasonable_price = current_price * 0.5
                     if pe_target_price < min_reasonable_price:
                         pe_target_price = min_reasonable_price
-                        
-                    st.success(f"✅ PE模型计算成功，目标价格: ${pe_target_price:.2f}")
                 else:
                     st.warning(f"PE模型返回结果格式错误，期望字典类型，实际得到: {type(results)}")
-                    st.warning(f"返回内容: {results}")
                     pe_target_price = 173.58  # 使用合理的默认值
                     
             except Exception as e:
@@ -466,20 +459,16 @@ def show_pe_valuation():
         - 可比公司权重：40%
         """)
     
-    # 运行PE估值
     if st.button("🚀 运行Alphabet PE估值分析", use_container_width=True):
         with st.spinner("正在计算Alphabet PE估值..."):
+            original_dir = os.getcwd()
             try:
                 # 切换到PE模型目录
-                original_dir = os.getcwd()
                 os.chdir(pe_model_path) # 使用相对路径
                 
                 if create_pe_valuation_dashboard:
                     try:
                         results = create_pe_valuation_dashboard()
-                        
-                        # 切换回原目录
-                        os.chdir(original_dir)
                         
                         # 检查results是否为字典类型
                         if isinstance(results, dict) and 'eps_predictions' in results:
@@ -593,13 +582,18 @@ def show_pe_valuation():
                             
                     except Exception as e:
                         st.error(f"PE模型计算失败: {e}")
-                        os.chdir(original_dir)  # 确保切换回原目录
                 else:
                     st.error("PE模型导入失败，无法运行估值分析")
                 
             except Exception as e:
                 st.error(f"PE估值计算失败: {e}")
                 st.info("请确保PE模型相关文件存在且路径正确")
+            finally:
+                # 确保切换回原目录
+                try:
+                    os.chdir(original_dir)
+                except Exception as e:
+                    st.warning(f"切换回原目录失败: {e}")
 
 def show_dcf_valuation():
     """显示DCF估值模型"""
@@ -654,7 +648,7 @@ def show_dcf_valuation():
                         )
                         
                         # 显示FCF组件
-                        st.subheader("�� Alphabet FCF组件分析")
+                        st.subheader("🏢 Alphabet FCF组件分析")
                         fcf_data = pd.DataFrame({
                             '组件': ['EBIT', '税率', '折旧摊销', '资本支出', '营运资金变化'],
                             '数值(百万美元)': [
@@ -1026,7 +1020,7 @@ def show_comprehensive_comparison():
                     if pe_target_price < min_reasonable_price:
                         pe_target_price = min_reasonable_price
                 else:
-                    st.warning("PE模型返回结果格式错误，使用默认值")
+                    st.warning(f"PE模型返回结果格式错误，期望字典类型，实际得到: {type(results)}")
                     pe_target_price = 173.58  # 使用合理的默认值
                     
             except Exception as e:
