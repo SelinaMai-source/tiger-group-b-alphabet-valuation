@@ -1,53 +1,81 @@
 # pe_model/pe_data.py
+
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+import os
 
-def get_alphabet_financial_data() -> pd.DataFrame:
+def get_data_dir():
     """
-    拉取 Alphabet（GOOG）的核心财务数据，用于估值分析。
-    包括：当前股价、市值、TTM每股收益、净利润、流通股数等。
+    获取数据目录的绝对路径
     """
-    ticker = yf.Ticker("GOOG")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(current_dir, "data", "processed")
+    return data_dir
 
-    # 获取基本信息
-    info = ticker.info
-    price = info.get("currentPrice")  # 最新股价
-    market_cap = info.get("marketCap")  # 当前市值
-    eps_ttm = info.get("trailingEps")  # 每股收益（过去12个月）
+def fetch_alphabet_data(ticker="GOOG"):
+    """
+    获取Alphabet的财务数据
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # 获取财务报表
+        income = stock.financials
+        bs = stock.balance_sheet
+        cf = stock.cashflow
+        
+        # 获取基本信息
+        info = stock.info
+        
+        # 创建数据字典
+        data = {
+            'ticker': ticker,
+            'current_price': info.get('currentPrice', 0),
+            'market_cap': info.get('marketCap', 0),
+            'pe_ratio': info.get('trailingPE', 0),
+            'eps': info.get('trailingEps', 0),
+            'revenue': info.get('totalRevenue', 0),
+            'net_income': info.get('netIncomeToCommon', 0)
+        }
+        
+        return data, income, bs, cf
+        
+    except Exception as e:
+        print(f"⚠️ 获取Alphabet数据失败：{e}")
+        return None, None, None, None
 
-    # 用于 DCF 和历史盈利增长趋势的财报
-    income_stmt = ticker.financials.T  # 营收、净利润等
-    balance_sheet = ticker.balance_sheet.T  # 用于计算股东权益、负债比率等
-    cashflow_stmt = ticker.cashflow.T  # 自由现金流，供 DCF 使用
-
-    # 自动推算流通股数和净利润（提高稳定性）
-    shares_outstanding = market_cap / eps_ttm if eps_ttm and market_cap else None
-    net_income_ttm = eps_ttm * shares_outstanding if shares_outstanding else None
-
-    # 构建 DataFrame 输出
-    data = {
-        "Date": datetime.today().strftime("%Y-%m-%d"),
-        "Company": "Alphabet",
-        "Price": price,
-        "MarketCap": market_cap,
-        "EPS_TTM": eps_ttm,
-        "NetIncome_TTM": net_income_ttm,
-        "SharesOutstanding": shares_outstanding
-    }
-
-    df = pd.DataFrame([data])
-    return df, income_stmt, balance_sheet, cashflow_stmt
+def save_alphabet_data(data, income, bs, cf):
+    """
+    保存Alphabet数据
+    """
+    try:
+        data_dir = get_data_dir()
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # 保存主要数据
+        df = pd.DataFrame([data])
+        df.to_csv(os.path.join(data_dir, "pe_data_alphabet.csv"), index=False)
+        
+        # 保存财务报表
+        if income is not None:
+            income.to_csv(os.path.join(data_dir, "income_statement.csv"))
+        if bs is not None:
+            bs.to_csv(os.path.join(data_dir, "balance_sheet.csv"))
+        if cf is not None:
+            cf.to_csv(os.path.join(data_dir, "cashflow_statement.csv"))
+            
+        print(f"✅ Alphabet数据已保存到：{data_dir}")
+        
+    except Exception as e:
+        print(f"⚠️ 保存Alphabet数据失败：{e}")
 
 if __name__ == "__main__":
-    df, income, bs, cf = get_alphabet_financial_data()
-
-    # 保存核心数据
-    df.to_csv("data/processed/pe_data_alphabet.csv", index=False)
-
-    # 可选：保存完整报表供 DCF 使用
-    income.to_csv("data/processed/income_statement.csv")
-    bs.to_csv("data/processed/balance_sheet.csv")
-    cf.to_csv("data/processed/cashflow_statement.csv")
-
-    print("已成功保存 Alphabet 财务数据")
+    print("🔍 正在获取Alphabet财务数据...")
+    data, income, bs, cf = fetch_alphabet_data("GOOG")
+    
+    if data:
+        save_alphabet_data(data, income, bs, cf)
+        print("✅ 数据获取完成")
+        print(pd.DataFrame([data]))
+    else:
+        print("❌ 数据获取失败")

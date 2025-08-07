@@ -20,6 +20,14 @@ def get_historical_revenue(ticker="GOOG") -> pd.Series:
         print(f"Error fetching financials for {ticker}: {e}")
         return None
 
+def get_data_dir():
+    """
+    获取数据目录的绝对路径
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(current_dir, "..", "data", "processed")
+    return data_dir
+
 def reconstruct_past_eps(revenue_series: pd.Series, net_margin=0.22, shares_outstanding=13_000_000_000):
     """
     反推出过去10年的历史 EPS，用于 ARIMA 时间序列建模
@@ -31,8 +39,15 @@ def reconstruct_past_eps(revenue_series: pd.Series, net_margin=0.22, shares_outs
     df["Net_Income"] = df["Revenue"] * net_margin
     df["EPS"] = df["Net_Income"] / shares_outstanding
 
-    os.makedirs("data/processed", exist_ok=True)
-    df.to_csv("data/processed/eps_history_reconstructed.csv", index=False)
+    try:
+        data_dir = get_data_dir()
+        os.makedirs(data_dir, exist_ok=True)
+        file_path = os.path.join(data_dir, "eps_history_reconstructed.csv")
+        df.to_csv(file_path, index=False)
+        print(f"✅ 已保存历史 EPS：{file_path}")
+    except Exception as e:
+        print(f"⚠️ 保存历史EPS失败：{e}")
+    
     return df
 
 def forecast_revenue(revenue_series: pd.Series, years_ahead=5) -> pd.DataFrame:
@@ -69,7 +84,6 @@ if __name__ == "__main__":
     if revenue_series is not None:
         # Step 1：重建历史 EPS（用于 ARIMA）
         hist_df = reconstruct_past_eps(revenue_series)
-        print("✅ 已保存历史 EPS：eps_history_reconstructed.csv")
         print(hist_df.tail())
 
         # Step 2：预测未来 EPS
@@ -77,14 +91,25 @@ if __name__ == "__main__":
         result_df = forecast_eps(forecast_df)
 
         # Step 3：保存未来预测
-        result_df.to_csv("data/processed/eps_forecast_three_statement.csv", index=False)
-        print("✅ 已保存未来预测 EPS：eps_forecast_three_statement.csv")
+        try:
+            data_dir = get_data_dir()
+            os.makedirs(data_dir, exist_ok=True)
+            file_path = os.path.join(data_dir, "eps_forecast_three_statement.csv")
+            result_df.to_csv(file_path, index=False)
+            print(f"✅ 已保存未来预测 EPS：{file_path}")
+        except Exception as e:
+            print(f"⚠️ 保存未来预测EPS失败：{e}")
+        
         print(result_df)
 
-def load_three_statement_eps(forecast_path="data/processed/eps_forecast_three_statement.csv", target_year=2025) -> float:
+def load_three_statement_eps(forecast_path=None, target_year=2025) -> float:
     """
     加载三表预测模型生成的 EPS 并返回指定年份的预测值（默认2025）
     """
+    if forecast_path is None:
+        data_dir = get_data_dir()
+        forecast_path = os.path.join(data_dir, "eps_forecast_three_statement.csv")
+    
     if not os.path.exists(forecast_path):
         raise FileNotFoundError(f"❌ 找不到预测文件：{forecast_path}，请先运行主程序生成预测")
 
