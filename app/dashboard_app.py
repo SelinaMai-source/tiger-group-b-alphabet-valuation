@@ -13,20 +13,34 @@ import numpy as np
 import time
 
 # 添加项目根目录到路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
 # 导入各个估值模型
 try:
     # PE模型
-    sys.path.append('/root/tiger_group_final/valuation_models/pe_model')
-    from pe_visual import create_pe_valuation_dashboard
+    pe_model_path = os.path.join(project_root, 'valuation_models', 'pe_model')
+    sys.path.append(pe_model_path)
+    try:
+        from pe_visual import create_pe_valuation_dashboard
+    except ImportError:
+        st.warning("PE模型导入失败，将使用备用功能")
+        create_pe_valuation_dashboard = None
     
     # DCF模型
-    sys.path.append('/root/tiger_group_final/valuation_models/dcf_model')
-    from fcf_formula import calculate_fcf, get_fcf_components
+    dcf_model_path = os.path.join(project_root, 'valuation_models', 'dcf_model')
+    sys.path.append(dcf_model_path)
+    try:
+        from fcf_formula import calculate_fcf, get_fcf_components
+    except ImportError:
+        st.warning("DCF模型导入失败，将使用备用功能")
+        calculate_fcf = None
+        get_fcf_components = None
     
     # EV模型
-    sys.path.append('/root/tiger_group_final/valuation_models/ev_model')
+    ev_model_path = os.path.join(project_root, 'valuation_models', 'ev_model')
+    sys.path.append(ev_model_path)
     try:
         from ev_calc import estimate_price as ev_estimate_price
     except ImportError:
@@ -66,7 +80,8 @@ try:
                 }
     
     # PS模型
-    sys.path.append('/root/tiger_group_final/valuation_models/ps_model')
+    ps_model_path = os.path.join(project_root, 'valuation_models', 'ps_model')
+    sys.path.append(ps_model_path)
     try:
         from ps_calc import calculate_forward_ps, get_market_cap
     except ImportError:
@@ -288,26 +303,31 @@ def show_dashboard_overview():
     try:
         # 切换到PE模型目录
         original_dir = os.getcwd()
-        os.chdir('/root/tiger_group_final/valuation_models/pe_model')
+        os.chdir(pe_model_path) # 使用相对路径
         
-        results = create_pe_valuation_dashboard()
-        
-        # 切换回原目录
-        os.chdir(original_dir)
-        
-        # 计算PE目标价格
-        predicted_eps = results['eps_predictions']['blended']
-        conservative_pe = 22.0
-        pe_target_price = conservative_pe * predicted_eps
-        
-        # 确保目标价格在合理范围内
-        max_reasonable_price = current_price * 1.5
-        if pe_target_price > max_reasonable_price:
-            pe_target_price = max_reasonable_price
-        
-        min_reasonable_price = current_price * 0.5
-        if pe_target_price < min_reasonable_price:
-            pe_target_price = min_reasonable_price
+        if create_pe_valuation_dashboard:
+            results = create_pe_valuation_dashboard()
+            
+            # 切换回原目录
+            os.chdir(original_dir)
+            
+            # 计算PE目标价格
+            predicted_eps = results['eps_predictions']['blended']
+            conservative_pe = 22.0
+            pe_target_price = conservative_pe * predicted_eps
+            
+            # 确保目标价格在合理范围内
+            max_reasonable_price = current_price * 1.5
+            if pe_target_price > max_reasonable_price:
+                pe_target_price = max_reasonable_price
+            
+            min_reasonable_price = current_price * 0.5
+            if pe_target_price < min_reasonable_price:
+                pe_target_price = min_reasonable_price
+            
+        else:
+            st.warning("PE模型导入失败，使用默认值")
+            pe_target_price = 173.58  # 使用合理的默认值
             
     except Exception as e:
         st.warning(f"无法获取PE模型结果: {e}")
@@ -435,117 +455,121 @@ def show_pe_valuation():
             try:
                 # 切换到PE模型目录
                 original_dir = os.getcwd()
-                os.chdir('/root/tiger_group_final/valuation_models/pe_model')
+                os.chdir(pe_model_path) # 使用相对路径
                 
-                results = create_pe_valuation_dashboard()
-                
-                # 切换回原目录
-                os.chdir(original_dir)
-                
-                # 获取当前股价
-                stock_data = get_stock_data("GOOG")
-                current_price = stock_data['current_price'] if stock_data else 196.92
-                
-                # 计算目标价格 - 使用更合理的PE估值方法
-                predicted_eps = results['eps_predictions']['blended']
-                
-                # 使用更保守的PE倍数计算目标价格
-                # Alphabet作为成熟科技公司，PE倍数通常在20-30之间
-                conservative_pe = 22.0  # 使用保守的PE倍数
-                target_price = conservative_pe * predicted_eps
-                
-                # 确保目标价格在合理范围内
-                # 1. 不超过当前股价的1.5倍
-                max_reasonable_price = current_price * 1.5
-                if target_price > max_reasonable_price:
-                    target_price = max_reasonable_price
-                
-                # 2. 不低于当前股价的0.5倍
-                min_reasonable_price = current_price * 0.5
-                if target_price < min_reasonable_price:
-                    target_price = min_reasonable_price
-                
-                # 生成投资建议
-                recommendation, recommendation_type = get_investment_recommendation(
-                    current_price, target_price, results['valuation_summary']['confidence_score']
-                )
-                
-                # 显示结果
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("当前股价", f"${current_price:.2f}")
-                
-                with col2:
-                    st.metric("目标价格", f"${target_price:.2f}")
-                
-                with col3:
-                    price_change = ((target_price - current_price) / current_price) * 100
-                    st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
-                
-                with col4:
-                    st.metric("置信度", f"{results['valuation_summary']['confidence_score']}%")
-                
-                # 投资建议卡片
-                st.subheader("💡 投资建议")
-                
-                # 根据建议类型设置颜色
-                if recommendation_type == "buy":
-                    color = "success"
-                    icon = "🚀"
-                elif recommendation_type == "cautious_buy":
-                    color = "info"
-                    icon = "📈"
-                elif recommendation_type == "hold":
-                    color = "warning"
-                    icon = "⏸️"
-                elif recommendation_type == "cautious_hold":
-                    color = "warning"
-                    icon = "⚠️"
+                if create_pe_valuation_dashboard:
+                    results = create_pe_valuation_dashboard()
+                    
+                    # 切换回原目录
+                    os.chdir(original_dir)
+                    
+                    # 获取当前股价
+                    stock_data = get_stock_data("GOOG")
+                    current_price = stock_data['current_price'] if stock_data else 196.92
+                    
+                    # 计算目标价格 - 使用更合理的PE估值方法
+                    predicted_eps = results['eps_predictions']['blended']
+                    
+                    # 使用更保守的PE倍数计算目标价格
+                    # Alphabet作为成熟科技公司，PE倍数通常在20-30之间
+                    conservative_pe = 22.0  # 使用保守的PE倍数
+                    target_price = conservative_pe * predicted_eps
+                    
+                    # 确保目标价格在合理范围内
+                    # 1. 不超过当前股价的1.5倍
+                    max_reasonable_price = current_price * 1.5
+                    if target_price > max_reasonable_price:
+                        target_price = max_reasonable_price
+                    
+                    # 2. 不低于当前股价的0.5倍
+                    min_reasonable_price = current_price * 0.5
+                    if target_price < min_reasonable_price:
+                        target_price = min_reasonable_price
+                    
+                    # 生成投资建议
+                    recommendation, recommendation_type = get_investment_recommendation(
+                        current_price, target_price, results['valuation_summary']['confidence_score']
+                    )
+                    
+                    # 显示结果
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("当前股价", f"${current_price:.2f}")
+                    
+                    with col2:
+                        st.metric("目标价格", f"${target_price:.2f}")
+                    
+                    with col3:
+                        price_change = ((target_price - current_price) / current_price) * 100
+                        st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
+                    
+                    with col4:
+                        st.metric("置信度", f"{results['valuation_summary']['confidence_score']}%")
+                    
+                    # 投资建议卡片
+                    st.subheader("💡 投资建议")
+                    
+                    # 根据建议类型设置颜色
+                    if recommendation_type == "buy":
+                        color = "success"
+                        icon = "🚀"
+                    elif recommendation_type == "cautious_buy":
+                        color = "info"
+                        icon = "📈"
+                    elif recommendation_type == "hold":
+                        color = "warning"
+                        icon = "⏸️"
+                    elif recommendation_type == "cautious_hold":
+                        color = "warning"
+                        icon = "⚠️"
+                    else:
+                        color = "error"
+                        icon = "❌"
+                    
+                    st.markdown(f"""
+                    <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
+                        <h4>{icon} {recommendation}</h4>
+                        <ul>
+                        <li><strong>当前股价：</strong> ${current_price:.2f}</li>
+                        <li><strong>目标价格：</strong> ${target_price:.2f}</li>
+                        <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
+                        <li><strong>模型置信度：</strong> {results['valuation_summary']['confidence_score']}%</li>
+                        <li><strong>估值方法：</strong> PE估值模型</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # EPS预测对比图
+                    st.subheader("🔮 EPS预测模型对比")
+                    eps_data = pd.DataFrame({
+                        '模型': ['三表建模', 'ARIMA', '可比公司', '融合预测'],
+                        'EPS预测': [
+                            results['eps_predictions']['three_statement'],
+                            results['eps_predictions']['arima'],
+                            results['eps_predictions']['comparable'],
+                            results['eps_predictions']['blended']
+                        ]
+                    })
+                    
+                    fig = px.bar(eps_data, x='模型', y='EPS预测', 
+                               color='EPS预测', color_continuous_scale='viridis',
+                               title="Alphabet EPS预测模型对比")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 权重分配饼图
+                    st.subheader("⚖️ 模型权重分配")
+                    weights_data = pd.DataFrame({
+                        '模型': ['三表建模', 'ARIMA', '可比公司'],
+                        '权重': [0.2, 0.4, 0.4]
+                    })
+                    
+                    fig_pie = px.pie(weights_data, values='权重', names='模型',
+                                   title="模型权重分配")
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                    
                 else:
-                    color = "error"
-                    icon = "❌"
-                
-                st.markdown(f"""
-                <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
-                    <h4>{icon} {recommendation}</h4>
-                    <ul>
-                    <li><strong>当前股价：</strong> ${current_price:.2f}</li>
-                    <li><strong>目标价格：</strong> ${target_price:.2f}</li>
-                    <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
-                    <li><strong>模型置信度：</strong> {results['valuation_summary']['confidence_score']}%</li>
-                    <li><strong>估值方法：</strong> PE估值模型</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # EPS预测对比图
-                st.subheader("🔮 EPS预测模型对比")
-                eps_data = pd.DataFrame({
-                    '模型': ['三表建模', 'ARIMA', '可比公司', '融合预测'],
-                    'EPS预测': [
-                        results['eps_predictions']['three_statement'],
-                        results['eps_predictions']['arima'],
-                        results['eps_predictions']['comparable'],
-                        results['eps_predictions']['blended']
-                    ]
-                })
-                
-                fig = px.bar(eps_data, x='模型', y='EPS预测', 
-                           color='EPS预测', color_continuous_scale='viridis',
-                           title="Alphabet EPS预测模型对比")
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 权重分配饼图
-                st.subheader("⚖️ 模型权重分配")
-                weights_data = pd.DataFrame({
-                    '模型': ['三表建模', 'ARIMA', '可比公司'],
-                    '权重': [0.2, 0.4, 0.4]
-                })
-                
-                fig_pie = px.pie(weights_data, values='权重', names='模型',
-                               title="模型权重分配")
-                st.plotly_chart(fig_pie, use_container_width=True)
+                    st.error("PE模型导入失败，无法运行估值分析")
                 
             except Exception as e:
                 st.error(f"PE估值计算失败: {e}")
@@ -585,98 +609,101 @@ def show_dcf_valuation():
         with st.spinner("正在计算Alphabet DCF估值..."):
             try:
                 # 获取FCF组件
-                components = get_fcf_components("GOOG")
-                if components:
-                    fcf = calculate_fcf(components)
-                    
-                    # 获取当前股价
-                    stock_data = get_stock_data("GOOG")
-                    current_price = stock_data['current_price'] if stock_data else 196.92
-                    
-                    # 简化的DCF估值计算（这里使用示例数据）
-                    # 在实际应用中，这里应该使用完整的DCF模型
-                    target_price = 182.50  # 示例目标价格
-                    
-                    # 生成投资建议
-                    recommendation, recommendation_type = get_investment_recommendation(
-                        current_price, target_price, 85
-                    )
-                    
-                    # 显示FCF组件
-                    st.subheader("🔮 Alphabet FCF组件分析")
-                    fcf_data = pd.DataFrame({
-                        '组件': ['EBIT', '税率', '折旧摊销', '资本支出', '营运资金变化'],
-                        '数值(百万美元)': [
-                            components['EBIT'] / 1e6,
-                            components['Tax Rate'] * 100,
-                            components['Depreciation & Amort.'] / 1e6,
-                            components['CAPEX'] / 1e6,
-                            components['Δ Working Capital'] / 1e6
-                        ]
-                    })
-                    
-                    fig = px.bar(fcf_data, x='组件', y='数值(百万美元)',
-                               title="Alphabet FCF组件分析",
-                               color='数值(百万美元)')
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 显示结果
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("当前股价", f"${current_price:.2f}")
-                    
-                    with col2:
-                        st.metric("目标价格", f"${target_price:.2f}")
-                    
-                    with col3:
-                        price_change = ((target_price - current_price) / current_price) * 100
-                        st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
-                    
-                    with col4:
-                        st.metric("置信度", "85%")
-                    
-                    # 投资建议卡片
-                    st.subheader("💡 投资建议")
-                    
-                    # 根据建议类型设置颜色
-                    if recommendation_type == "buy":
-                        icon = "🚀"
-                    elif recommendation_type == "cautious_buy":
-                        icon = "📈"
-                    elif recommendation_type == "hold":
-                        icon = "⏸️"
-                    elif recommendation_type == "cautious_hold":
-                        icon = "⚠️"
+                if calculate_fcf and get_fcf_components:
+                    components = get_fcf_components("GOOG")
+                    if components:
+                        fcf = calculate_fcf(components)
+                        
+                        # 获取当前股价
+                        stock_data = get_stock_data("GOOG")
+                        current_price = stock_data['current_price'] if stock_data else 196.92
+                        
+                        # 简化的DCF估值计算（这里使用示例数据）
+                        # 在实际应用中，这里应该使用完整的DCF模型
+                        target_price = 182.50  # 示例目标价格
+                        
+                        # 生成投资建议
+                        recommendation, recommendation_type = get_investment_recommendation(
+                            current_price, target_price, 85
+                        )
+                        
+                        # 显示FCF组件
+                        st.subheader("�� Alphabet FCF组件分析")
+                        fcf_data = pd.DataFrame({
+                            '组件': ['EBIT', '税率', '折旧摊销', '资本支出', '营运资金变化'],
+                            '数值(百万美元)': [
+                                components['EBIT'] / 1e6,
+                                components['Tax Rate'] * 100,
+                                components['Depreciation & Amort.'] / 1e6,
+                                components['CAPEX'] / 1e6,
+                                components['Δ Working Capital'] / 1e6
+                            ]
+                        })
+                        
+                        fig = px.bar(fcf_data, x='组件', y='数值(百万美元)',
+                                   title="Alphabet FCF组件分析",
+                                   color='数值(百万美元)')
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 显示结果
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("当前股价", f"${current_price:.2f}")
+                        
+                        with col2:
+                            st.metric("目标价格", f"${target_price:.2f}")
+                        
+                        with col3:
+                            price_change = ((target_price - current_price) / current_price) * 100
+                            st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
+                        
+                        with col4:
+                            st.metric("置信度", "85%")
+                        
+                        # 投资建议卡片
+                        st.subheader("💡 投资建议")
+                        
+                        # 根据建议类型设置颜色
+                        if recommendation_type == "buy":
+                            icon = "🚀"
+                        elif recommendation_type == "cautious_buy":
+                            icon = "📈"
+                        elif recommendation_type == "hold":
+                            icon = "⏸️"
+                        elif recommendation_type == "cautious_hold":
+                            icon = "⚠️"
+                        else:
+                            icon = "❌"
+                        
+                        st.markdown(f"""
+                        <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
+                            <h4>{icon} {recommendation}</h4>
+                            <ul>
+                            <li><strong>当前股价：</strong> ${current_price:.2f}</li>
+                            <li><strong>目标价格：</strong> ${target_price:.2f}</li>
+                            <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
+                            <li><strong>模型置信度：</strong> 85%</li>
+                            <li><strong>估值方法：</strong> DCF估值模型</li>
+                            </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # DCF估值结果
+                        st.subheader("💰 DCF估值结果")
+                        st.markdown(f"""
+                        **Alphabet DCF估值结果：**
+                        - **TTM FCF：** ${fcf/1e9:.2f}B
+                        - **EBIT：** ${components['EBIT']/1e9:.2f}B
+                        - **有效税率：** {components['Tax Rate']*100:.1f}%
+                        - **折旧摊销：** ${components['Depreciation & Amort.']/1e9:.2f}B
+                        - **资本支出：** ${abs(components['CAPEX'])/1e9:.2f}B
+                        - **营运资金变化：** ${components['Δ Working Capital']/1e9:.2f}B
+                        """)
                     else:
-                        icon = "❌"
-                    
-                    st.markdown(f"""
-                    <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
-                        <h4>{icon} {recommendation}</h4>
-                        <ul>
-                        <li><strong>当前股价：</strong> ${current_price:.2f}</li>
-                        <li><strong>目标价格：</strong> ${target_price:.2f}</li>
-                        <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
-                        <li><strong>模型置信度：</strong> 85%</li>
-                        <li><strong>估值方法：</strong> DCF估值模型</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # DCF估值结果
-                    st.subheader("💰 DCF估值结果")
-                    st.markdown(f"""
-                    **Alphabet DCF估值结果：**
-                    - **TTM FCF：** ${fcf/1e9:.2f}B
-                    - **EBIT：** ${components['EBIT']/1e9:.2f}B
-                    - **有效税率：** {components['Tax Rate']*100:.1f}%
-                    - **折旧摊销：** ${components['Depreciation & Amort.']/1e9:.2f}B
-                    - **资本支出：** ${abs(components['CAPEX'])/1e9:.2f}B
-                    - **营运资金变化：** ${components['Δ Working Capital']/1e9:.2f}B
-                    """)
+                        st.error("无法获取FCF组件数据")
                 else:
-                    st.error("无法获取FCF组件数据")
+                    st.error("DCF模型导入失败，无法运行估值分析")
                 
             except Exception as e:
                 st.error(f"DCF估值计算失败: {e}")
@@ -711,93 +738,97 @@ def show_ev_valuation():
         with st.spinner("正在计算Alphabet EV估值..."):
             try:
                 # 获取EV组件
-                ev_data = get_alphabet_ev_components()
-                
-                # 获取当前股价
-                stock_data = get_stock_data("GOOG")
-                current_price = stock_data['current_price'] if stock_data else 196.92
-                
-                # 简化的EV估值计算（这里使用示例数据）
-                target_price = 205.30  # 示例目标价格
-                
-                # 生成投资建议
-                recommendation, recommendation_type = get_investment_recommendation(
-                    current_price, target_price, 82
-                )
-                
-                # 显示EV组件
-                st.subheader("🏢 Alphabet企业价值构成")
-                ev_components = pd.DataFrame({
-                    '指标': ['市值', '总债务', '现金', '净债务', '企业价值'],
-                    '数值(十亿美元)': [
-                        ev_data.get('MarketCap', 0) / 1e9,
-                        ev_data.get('TotalDebt', 0) / 1e9,
-                        ev_data.get('Cash', 0) / 1e9,
-                        (ev_data.get('TotalDebt', 0) - ev_data.get('Cash', 0)) / 1e9,
-                        ev_data.get('EnterpriseValue', 0) / 1e9
-                    ]
-                })
-                
-                fig = px.bar(ev_components, x='指标', y='数值(十亿美元)',
-                           title="Alphabet企业价值构成分析",
-                           color='数值(十亿美元)')
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 显示结果
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("当前股价", f"${current_price:.2f}")
-                
-                with col2:
-                    st.metric("目标价格", f"${target_price:.2f}")
-                
-                with col3:
-                    price_change = ((target_price - current_price) / current_price) * 100
-                    st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
-                
-                with col4:
-                    st.metric("置信度", "82%")
-                
-                # 投资建议卡片
-                st.subheader("💡 投资建议")
-                
-                # 根据建议类型设置颜色
-                if recommendation_type == "buy":
-                    icon = "🚀"
-                elif recommendation_type == "cautious_buy":
-                    icon = "📈"
-                elif recommendation_type == "hold":
-                    icon = "⏸️"
-                elif recommendation_type == "cautious_hold":
-                    icon = "⚠️"
+                if get_alphabet_ev_components:
+                    ev_data = get_alphabet_ev_components()
+                    
+                    # 获取当前股价
+                    stock_data = get_stock_data("GOOG")
+                    current_price = stock_data['current_price'] if stock_data else 196.92
+                    
+                    # 简化的EV估值计算（这里使用示例数据）
+                    target_price = 205.30  # 示例目标价格
+                    
+                    # 生成投资建议
+                    recommendation, recommendation_type = get_investment_recommendation(
+                        current_price, target_price, 82
+                    )
+                    
+                    # 显示EV组件
+                    st.subheader("🏢 Alphabet企业价值构成")
+                    ev_components = pd.DataFrame({
+                        '指标': ['市值', '总债务', '现金', '净债务', '企业价值'],
+                        '数值(十亿美元)': [
+                            ev_data.get('MarketCap', 0) / 1e9,
+                            ev_data.get('TotalDebt', 0) / 1e9,
+                            ev_data.get('Cash', 0) / 1e9,
+                            (ev_data.get('TotalDebt', 0) - ev_data.get('Cash', 0)) / 1e9,
+                            ev_data.get('EnterpriseValue', 0) / 1e9
+                        ]
+                    })
+                    
+                    fig = px.bar(ev_components, x='指标', y='数值(十亿美元)',
+                               title="Alphabet企业价值构成分析",
+                               color='数值(十亿美元)')
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 显示结果
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("当前股价", f"${current_price:.2f}")
+                    
+                    with col2:
+                        st.metric("目标价格", f"${target_price:.2f}")
+                    
+                    with col3:
+                        price_change = ((target_price - current_price) / current_price) * 100
+                        st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
+                    
+                    with col4:
+                        st.metric("置信度", "82%")
+                    
+                    # 投资建议卡片
+                    st.subheader("💡 投资建议")
+                    
+                    # 根据建议类型设置颜色
+                    if recommendation_type == "buy":
+                        icon = "🚀"
+                    elif recommendation_type == "cautious_buy":
+                        icon = "📈"
+                    elif recommendation_type == "hold":
+                        icon = "⏸️"
+                    elif recommendation_type == "cautious_hold":
+                        icon = "⚠️"
+                    else:
+                        icon = "❌"
+                    
+                    st.markdown(f"""
+                    <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
+                        <h4>{icon} {recommendation}</h4>
+                        <ul>
+                        <li><strong>当前股价：</strong> ${current_price:.2f}</li>
+                        <li><strong>目标价格：</strong> ${target_price:.2f}</li>
+                        <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
+                        <li><strong>模型置信度：</strong> 82%</li>
+                        <li><strong>估值方法：</strong> EV估值模型</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # EV估值结果
+                    st.subheader("📊 EV估值结果")
+                    st.markdown(f"""
+                    **Alphabet EV估值结果：**
+                    - **当前市值：** ${ev_data.get('MarketCap', 0)/1e9:.2f}B
+                    - **总债务：** ${ev_data.get('TotalDebt', 0)/1e9:.2f}B
+                    - **现金及现金等价物：** ${ev_data.get('Cash', 0)/1e9:.2f}B
+                    - **净债务：** ${(ev_data.get('TotalDebt', 0) - ev_data.get('Cash', 0))/1e9:.2f}B
+                    - **企业价值：** ${ev_data.get('EnterpriseValue', 0)/1e9:.2f}B
+                    - **EBITDA TTM：** ${ev_data.get('EBITDA_TTM', 0)/1e9:.2f}B
+                    """)
+                    
                 else:
-                    icon = "❌"
-                
-                st.markdown(f"""
-                <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
-                    <h4>{icon} {recommendation}</h4>
-                    <ul>
-                    <li><strong>当前股价：</strong> ${current_price:.2f}</li>
-                    <li><strong>目标价格：</strong> ${target_price:.2f}</li>
-                    <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
-                    <li><strong>模型置信度：</strong> 82%</li>
-                    <li><strong>估值方法：</strong> EV估值模型</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # EV估值结果
-                st.subheader("📊 EV估值结果")
-                st.markdown(f"""
-                **Alphabet EV估值结果：**
-                - **当前市值：** ${ev_data.get('MarketCap', 0)/1e9:.2f}B
-                - **总债务：** ${ev_data.get('TotalDebt', 0)/1e9:.2f}B
-                - **现金及现金等价物：** ${ev_data.get('Cash', 0)/1e9:.2f}B
-                - **净债务：** ${(ev_data.get('TotalDebt', 0) - ev_data.get('Cash', 0))/1e9:.2f}B
-                - **企业价值：** ${ev_data.get('EnterpriseValue', 0)/1e9:.2f}B
-                - **EBITDA TTM：** ${ev_data.get('EBITDA_TTM', 0)/1e9:.2f}B
-                """)
+                    st.error("EV模型导入失败，无法运行估值分析")
                 
             except Exception as e:
                 st.error(f"EV估值计算失败: {e}")
@@ -832,91 +863,95 @@ def show_ps_valuation():
         with st.spinner("正在计算Alphabet PS估值..."):
             try:
                 # 获取市值和收入预测
-                market_cap = get_market_cap("GOOG")
-                
-                # 这里需要从revenue_blender获取预测收入
-                # 暂时使用示例数据
-                revenue_2025 = 374.9e9  # 374.9B
-                
-                forward_ps = calculate_forward_ps(market_cap, revenue_2025)
-                
-                # 获取当前股价
-                stock_data = get_stock_data("GOOG")
-                current_price = stock_data['current_price'] if stock_data else 196.92
-                
-                # 简化的PS估值计算（这里使用示例数据）
-                target_price = 198.90  # 示例目标价格
-                
-                # 生成投资建议
-                recommendation, recommendation_type = get_investment_recommendation(
-                    current_price, target_price, 80
-                )
-                
-                # 显示结果
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("当前股价", f"${current_price:.2f}")
-                
-                with col2:
-                    st.metric("目标价格", f"${target_price:.2f}")
-                
-                with col3:
-                    price_change = ((target_price - current_price) / current_price) * 100
-                    st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
-                
-                with col4:
-                    st.metric("置信度", "80%")
-                
-                # 投资建议卡片
-                st.subheader("💡 投资建议")
-                
-                # 根据建议类型设置颜色
-                if recommendation_type == "buy":
-                    icon = "🚀"
-                elif recommendation_type == "cautious_buy":
-                    icon = "📈"
-                elif recommendation_type == "hold":
-                    icon = "⏸️"
-                elif recommendation_type == "cautious_hold":
-                    icon = "⚠️"
+                if get_market_cap and calculate_forward_ps:
+                    market_cap = get_market_cap("GOOG")
+                    
+                    # 这里需要从revenue_blender获取预测收入
+                    # 暂时使用示例数据
+                    revenue_2025 = 374.9e9  # 374.9B
+                    
+                    forward_ps = calculate_forward_ps(market_cap, revenue_2025)
+                    
+                    # 获取当前股价
+                    stock_data = get_stock_data("GOOG")
+                    current_price = stock_data['current_price'] if stock_data else 196.92
+                    
+                    # 简化的PS估值计算（这里使用示例数据）
+                    target_price = 198.90  # 示例目标价格
+                    
+                    # 生成投资建议
+                    recommendation, recommendation_type = get_investment_recommendation(
+                        current_price, target_price, 80
+                    )
+                    
+                    # 显示结果
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("当前股价", f"${current_price:.2f}")
+                    
+                    with col2:
+                        st.metric("目标价格", f"${target_price:.2f}")
+                    
+                    with col3:
+                        price_change = ((target_price - current_price) / current_price) * 100
+                        st.metric("预期涨幅", f"{price_change:+.1f}%", delta=f"{price_change:+.1f}%")
+                    
+                    with col4:
+                        st.metric("置信度", "80%")
+                    
+                    # 投资建议卡片
+                    st.subheader("💡 投资建议")
+                    
+                    # 根据建议类型设置颜色
+                    if recommendation_type == "buy":
+                        icon = "🚀"
+                    elif recommendation_type == "cautious_buy":
+                        icon = "📈"
+                    elif recommendation_type == "hold":
+                        icon = "⏸️"
+                    elif recommendation_type == "cautious_hold":
+                        icon = "⚠️"
+                    else:
+                        icon = "❌"
+                    
+                    st.markdown(f"""
+                    <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
+                        <h4>{icon} {recommendation}</h4>
+                        <ul>
+                        <li><strong>当前股价：</strong> ${current_price:.2f}</li>
+                        <li><strong>目标价格：</strong> ${target_price:.2f}</li>
+                        <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
+                        <li><strong>模型置信度：</strong> 80%</li>
+                        <li><strong>估值方法：</strong> PS估值模型</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # PS估值结果
+                    st.subheader("📊 PS估值结果")
+                    st.markdown(f"""
+                    **Alphabet PS估值结果：**
+                    - **当前市值：** ${market_cap/1e9:.2f}B
+                    - **2025E收入预测：** ${revenue_2025/1e9:.2f}B
+                    - **Forward PS (2025E)：** {forward_ps}
+                    - **估值日期：** {datetime.now().strftime('%Y-%m-%d')}
+                    """)
+                    
+                    # 收入预测趋势
+                    st.subheader("📈 Alphabet未来收入预测")
+                    ps_data = pd.DataFrame({
+                        '年份': [2025, 2026, 2027, 2028, 2029],
+                        '收入预测(十亿美元)': [374.9, 405.1, 435.2, 465.4, 495.6]
+                    })
+                    
+                    fig = px.line(ps_data, x='年份', y='收入预测(十亿美元)',
+                                title="Alphabet未来5年收入预测趋势",
+                                markers=True)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
                 else:
-                    icon = "❌"
-                
-                st.markdown(f"""
-                <div class="model-card" style="border-left: 4px solid {'#4CAF50' if recommendation_type == 'buy' else '#2196F3' if recommendation_type == 'cautious_buy' else '#FF9800' if recommendation_type in ['hold', 'cautious_hold'] else '#F44336'};">
-                    <h4>{icon} {recommendation}</h4>
-                    <ul>
-                    <li><strong>当前股价：</strong> ${current_price:.2f}</li>
-                    <li><strong>目标价格：</strong> ${target_price:.2f}</li>
-                    <li><strong>预期涨幅：</strong> {price_change:+.1f}%</li>
-                    <li><strong>模型置信度：</strong> 80%</li>
-                    <li><strong>估值方法：</strong> PS估值模型</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # PS估值结果
-                st.subheader("📊 PS估值结果")
-                st.markdown(f"""
-                **Alphabet PS估值结果：**
-                - **当前市值：** ${market_cap/1e9:.2f}B
-                - **2025E收入预测：** ${revenue_2025/1e9:.2f}B
-                - **Forward PS (2025E)：** {forward_ps}
-                - **估值日期：** {datetime.now().strftime('%Y-%m-%d')}
-                """)
-                
-                # 收入预测趋势
-                st.subheader("📈 Alphabet未来收入预测")
-                ps_data = pd.DataFrame({
-                    '年份': [2025, 2026, 2027, 2028, 2029],
-                    '收入预测(十亿美元)': [374.9, 405.1, 435.2, 465.4, 495.6]
-                })
-                
-                fig = px.line(ps_data, x='年份', y='收入预测(十亿美元)',
-                            title="Alphabet未来5年收入预测趋势",
-                            markers=True)
-                st.plotly_chart(fig, use_container_width=True)
+                    st.error("PS模型导入失败，无法运行估值分析")
                 
             except Exception as e:
                 st.error(f"PS估值计算失败: {e}")
@@ -940,26 +975,31 @@ def show_comprehensive_comparison():
     try:
         # 切换到PE模型目录
         original_dir = os.getcwd()
-        os.chdir('/root/tiger_group_final/valuation_models/pe_model')
+        os.chdir(pe_model_path) # 使用相对路径
         
-        results = create_pe_valuation_dashboard()
-        
-        # 切换回原目录
-        os.chdir(original_dir)
-        
-        # 计算PE目标价格
-        predicted_eps = results['eps_predictions']['blended']
-        conservative_pe = 22.0
-        pe_target_price = conservative_pe * predicted_eps
-        
-        # 确保目标价格在合理范围内
-        max_reasonable_price = current_price * 1.5
-        if pe_target_price > max_reasonable_price:
-            pe_target_price = max_reasonable_price
-        
-        min_reasonable_price = current_price * 0.5
-        if pe_target_price < min_reasonable_price:
-            pe_target_price = min_reasonable_price
+        if create_pe_valuation_dashboard:
+            results = create_pe_valuation_dashboard()
+            
+            # 切换回原目录
+            os.chdir(original_dir)
+            
+            # 计算PE目标价格
+            predicted_eps = results['eps_predictions']['blended']
+            conservative_pe = 22.0
+            pe_target_price = conservative_pe * predicted_eps
+            
+            # 确保目标价格在合理范围内
+            max_reasonable_price = current_price * 1.5
+            if pe_target_price > max_reasonable_price:
+                pe_target_price = max_reasonable_price
+            
+            min_reasonable_price = current_price * 0.5
+            if pe_target_price < min_reasonable_price:
+                pe_target_price = min_reasonable_price
+            
+        else:
+            st.warning("PE模型导入失败，使用默认值")
+            pe_target_price = 173.58  # 使用合理的默认值
             
     except Exception as e:
         st.warning(f"无法获取PE模型结果: {e}")
