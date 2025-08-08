@@ -2,7 +2,11 @@
 
 import numpy as np
 import pandas as pd
-from .sotp_data import get_sotp_components, get_industry_multiples
+try:
+    from .sotp_data import get_sotp_components, get_industry_multiples
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    from sotp_data import get_sotp_components, get_industry_multiples
 
 def calculate_services_valuation(services_net_income, services_pe_multiple):
     """

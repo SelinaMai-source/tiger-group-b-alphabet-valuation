@@ -6,7 +6,11 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from .sotp_calc import calculate_sotp_valuation, get_sotp_valuation_summary
+try:
+    from .sotp_calc import calculate_sotp_valuation, get_sotp_valuation_summary
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    from sotp_calc import calculate_sotp_valuation, get_sotp_valuation_summary
 
 def create_sotp_dashboard():
     """

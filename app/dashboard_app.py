@@ -111,12 +111,25 @@ try:
     sotp_model_path = os.path.join(project_root, 'valuation_models', 'sotp_model')
     sys.path.append(sotp_model_path)
     try:
-        from sotp_calc import calculate_sotp_valuation, get_sotp_valuation_summary
-        from sotp_visual import create_sotp_dashboard, plot_sotp_breakdown, plot_sotp_comparison, plot_sotp_components, display_sotp_metrics, display_sotp_details
+        # 使用绝对导入
+        import sotp_calc
+        import sotp_visual
+        import sotp_calc_enhanced
+        
+        calculate_sotp_valuation = sotp_calc.calculate_sotp_valuation
+        get_sotp_valuation_summary = sotp_calc.get_sotp_valuation_summary
+        create_sotp_dashboard = sotp_visual.create_sotp_dashboard
+        plot_sotp_breakdown = sotp_visual.plot_sotp_breakdown
+        plot_sotp_comparison = sotp_visual.plot_sotp_comparison
+        plot_sotp_components = sotp_visual.plot_sotp_components
+        display_sotp_metrics = sotp_visual.display_sotp_metrics
+        display_sotp_details = sotp_visual.display_sotp_details
+        
         # 增强版SOTP模型
-        from sotp_calc_enhanced import calculate_enhanced_sotp_valuation
+        calculate_enhanced_sotp_valuation = sotp_calc_enhanced.calculate_enhanced_sotp_valuation
         # 高级版SOTP模型
-        from sotp_calc_enhanced import calculate_advanced_sotp_valuation
+        calculate_advanced_sotp_valuation = sotp_calc_enhanced.calculate_advanced_sotp_valuation
+        
         sotp_model_available = True
         enhanced_sotp_available = True
         advanced_sotp_available = True
@@ -376,12 +389,32 @@ def show_dashboard_overview():
         st.warning(f"无法获取PE模型结果: {e}")
         pe_target_price = 173.58  # 使用合理的默认值
     
+    # 尝试获取SOTP模型的实际结果
+    try:
+        if enhanced_sotp_available and calculate_enhanced_sotp_valuation is not None:
+            sotp_results, _ = calculate_enhanced_sotp_valuation("GOOG")
+            if sotp_results:
+                sotp_target_price = sotp_results['target_price']
+            else:
+                sotp_target_price = 195.00  # 使用合理的默认值
+        elif sotp_model_available and calculate_sotp_valuation is not None:
+            sotp_results = calculate_sotp_valuation("GOOG")
+            if sotp_results:
+                sotp_target_price = sotp_results['target_price']
+            else:
+                sotp_target_price = 195.00  # 使用合理的默认值
+        else:
+            sotp_target_price = 195.00  # 使用合理的默认值
+    except Exception as e:
+        st.warning(f"SOTP模型计算失败: {e}")
+        sotp_target_price = 195.00  # 使用合理的默认值
+    
     # 创建对比数据 - 使用实际计算结果
     comparison_data = {
-        '估值模型': ['PE模型', 'DCF模型', 'EV模型', 'PS模型'],
-        '目标价格(美元)': [pe_target_price, dcf_target_price, ev_target_price, ps_target_price],
-        '置信度(%)': [88, 85, 82, 80],
-        '适用场景': ['成熟公司', '成长公司', '重资产公司', '科技公司']
+        '估值模型': ['PE模型', 'DCF模型', 'EV模型', 'PS模型', 'SOTP模型'],
+        '目标价格(美元)': [pe_target_price, dcf_target_price, ev_target_price, ps_target_price, sotp_target_price],
+        '置信度(%)': [88, 85, 82, 80, 85],
+        '适用场景': ['成熟公司', '成长公司', '重资产公司', '科技公司', '多元化公司']
     }
     
     df_comparison = pd.DataFrame(comparison_data)
@@ -404,7 +437,7 @@ def show_dashboard_overview():
         st.metric("平均预期涨幅", f"{avg_change:+.1f}%", delta=f"{avg_change:+.1f}%")
     
     # 价格对比柱状图
-    st.subheader("📊 四种估值模型对比")
+    st.subheader("📊 五种估值模型对比")
     fig_price = px.bar(df_comparison, x='估值模型', y='目标价格(美元)',
                       color='置信度(%)', 
                       title="Alphabet各模型估值结果对比",

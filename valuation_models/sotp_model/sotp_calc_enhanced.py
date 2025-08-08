@@ -17,9 +17,15 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 sys.path.append(project_root)
 
 # 导入自定义模块
-from .sotp_data_detailed import get_alphabet_business_breakdown, get_other_bets_detailed_breakdown, get_market_data
-from .real_option_model import RealOptionModel, calculate_other_bets_real_option_valuation
-from .statistical_models import StatisticalPredictionModels
+try:
+    from .sotp_data_detailed import get_alphabet_business_breakdown, get_other_bets_detailed_breakdown, get_market_data
+    from .real_option_model import RealOptionModel, calculate_other_bets_real_option_valuation
+    from .statistical_models import StatisticalPredictionModels
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    from sotp_data_detailed import get_alphabet_business_breakdown, get_other_bets_detailed_breakdown, get_market_data
+    from real_option_model import RealOptionModel, calculate_other_bets_real_option_valuation
+    from statistical_models import StatisticalPredictionModels
 
 class AdvancedSOTPCalculator:
     """
@@ -520,6 +526,35 @@ class AdvancedSOTPCalculator:
             return current_price
         except:
             return 197.12  # 默认价格
+
+def calculate_enhanced_sotp_valuation(ticker="GOOG"):
+    """
+    计算增强版SOTP估值的主函数
+    """
+    calculator = AdvancedSOTPCalculator()
+    results = calculator.calculate_advanced_sotp_valuation(ticker)
+    
+    # 创建增强版报告
+    report = f"""
+    🎯 Alphabet增强版SOTP估值报告
+    
+    📊 估值结果：
+    - 当前股价：${results['current_price']:.2f}
+    - 目标股价：${results['target_price']:.2f}
+    - 估值溢价：{((results['target_price'] / results['current_price'] - 1) * 100):.1f}%
+    
+    🏢 业务线估值：
+    - Google Services：${results['services_valuation']/1e9:.1f}B ({results['services_percentage']:.1f}%)
+    - Google Cloud：${results['cloud_valuation']/1e9:.1f}B ({results['cloud_percentage']:.1f}%)
+    - Other Bets：${results['other_bets_valuation']/1e9:.1f}B ({results['other_bets_percentage']:.1f}%)
+    
+    💰 总估值：${results['total_valuation']/1e9:.1f}B
+    - 净债务：${results['net_debt']/1e9:.1f}B
+    
+    数据来源：Alphabet 2023年10-K报告 + 统计预测模型 + Real Option模型
+    """
+    
+    return results, report
 
 def calculate_advanced_sotp_valuation(ticker="GOOG"):
     """
