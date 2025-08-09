@@ -436,6 +436,41 @@ def show_dashboard_overview():
         avg_change = ((avg_target - current_price) / current_price) * 100
         st.metric("平均预期涨幅", f"{avg_change:+.1f}%", delta=f"{avg_change:+.1f}%")
     
+    # 模型公式简介
+    st.subheader("🔬 各估值模型核心公式")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        **PE估值模型**
+        ```
+        目标股价 = 预测EPS × 目标PE倍数
+        ```
+        
+        **DCF估值模型**
+        ```
+        股价 = (Σ[FCF/(1+WACC)^t] + 终值) / 股数
+        ```
+        
+        **EV估值模型**
+        ```
+        股价 = (预测EBITDA × EV/EBITDA倍数 - 净债务) / 股数
+        ```
+        """)
+    
+    with col2:
+        st.markdown("""
+        **PS估值模型**
+        ```
+        股价 = (预测营收 × PS倍数) / 股数
+        ```
+        
+        **SOTP估值模型**
+        ```
+        股价 = (Services估值 + Cloud估值 + Other Bets估值 - 净债务) / 股数
+        ```
+        """)
+    
     # 价格对比柱状图
     st.subheader("📊 五种估值模型对比")
     fig_price = px.bar(df_comparison, x='估值模型', y='目标价格(美元)',
@@ -504,25 +539,50 @@ def show_pe_valuation():
         st.markdown("""
         ### PE估值模型方法论
         
-        **1. 三表建模预测**
-        - 基于Alphabet历史财务数据（收入、利润、股本）
-        - 使用线性回归预测未来营收
-        - 通过净利率计算EPS
+        #### 📊 核心估值公式
+        ```
+        Forward PE = 当前股价 / 预测EPS
+        目标股价 = 预测EPS × 目标PE倍数
+        ```
         
-        **2. ARIMA时间序列预测**
-        - 基于Alphabet历史EPS数据的时间序列分析
-        - 使用ARIMA(1,1,0)模型
-        - 捕捉EPS的长期趋势和季节性
+        #### 🔮 EPS预测方法（三种方法融合）
         
-        **3. 可比公司回归分析**
-        - 基于同行业科技公司（Apple、Microsoft、Amazon等）
-        - 使用线性回归模型（毛利率、净利率、营收增长率）
-        - 预测Alphabet的EPS
+        **1. 三表建模预测（权重：20%）**
+        - **数据来源**：Alphabet历史财务数据（收入、利润、股本）
+        - **预测公式**：
+          ```
+          未来收入 = 历史收入 × (1 + 预测增长率)
+          预测EPS = (未来收入 × 净利率) / 流通股数
+          ```
+        - **实现方法**：使用线性回归预测未来营收，通过净利率计算EPS
+        
+        **2. ARIMA时间序列预测（权重：40%）**
+        - **数据来源**：Alphabet历史EPS数据的时间序列
+        - **模型参数**：ARIMA(1,1,0)模型
+        - **预测公式**：
+          ```
+          EPS(t) = μ + φ₁ × (EPS(t-1) - μ) + εₜ
+          其中：μ为长期均值，φ₁为自回归系数，εₜ为误差项
+          ```
+        - **特点**：捕捉EPS的长期趋势和季节性变化
+        
+        **3. 可比公司回归分析（权重：40%）**
+        - **数据来源**：同行业科技公司（Apple、Microsoft、Amazon等）
+        - **回归模型**：
+          ```
+          预测EPS = β₀ + β₁×毛利率 + β₂×净利率 + β₃×营收增长率
+          ```
+        - **训练数据**：基于可比公司的财务指标和EPS的关系
+        - **应用**：将Alphabet的财务指标代入训练好的模型
         
         **4. 加权融合算法**
-        - 三表建模权重：20%
-        - ARIMA权重：40%
-        - 可比公司权重：40%
+        ```
+        最终EPS预测 = 0.2×三表建模EPS + 0.4×ARIMA预测EPS + 0.4×可比公司EPS
+        ```
+        
+        #### 🎯 目标PE倍数确定
+        - **保守PE倍数**：22.0倍（基于Alphabet作为成熟科技公司的行业特征）
+        - **合理性检验**：目标价格不超过当前股价的1.5倍，不低于0.5倍
         """)
     
     if st.button("🚀 运行Alphabet PE估值分析", use_container_width=True):
@@ -672,25 +732,68 @@ def show_dcf_valuation():
         st.markdown("""
         ### DCF估值模型方法论
         
-        **1. 自由现金流计算**
-        - FCF = EBIT(1-T) + D&A - CAPEX - ΔWC
-        - 基于Alphabet历史财务数据计算TTM FCF
+        #### 📊 核心估值公式
+        ```
+        企业价值 = Σ[FCF(t) / (1+WACC)^t] + 终值 / (1+WACC)^n
+        股权价值 = 企业价值 - 净债务
+        目标股价 = 股权价值 / 流通股数
+        ```
         
-        **2. 未来现金流预测**
-        - 使用线性回归预测Alphabet未来营收
-        - 通过净利率和资本支出比例计算未来FCF
+        #### 💰 自由现金流（FCF）计算
+        **核心公式**：
+        ```
+        FCF = EBIT × (1 - 税率) + 折旧摊销 - 资本支出 - 营运资金变化
+        FCF = EBIT(1-T) + D&A - CAPEX - ΔWC
+        ```
         
-        **3. 折现率计算**
-        - WACC = (E/V × Re) + (D/V × Rd × (1-T))
-        - 考虑Alphabet的权益成本和债务成本
+        **组成部分**：
+        - **EBIT**：营业利润（来源：损益表）
+        - **税率**：有效税率 = 所得税费用 / 税前利润
+        - **折旧摊销（D&A）**：来源于现金流量表
+        - **资本支出（CAPEX）**：来源于现金流量表（资本支出）
+        - **营运资金变化（ΔWC）**：流动资产变化 - 流动负债变化
         
-        **4. 终值计算**
-        - 使用永续增长模型
-        - 终值 = FCFn+1 / (WACC - g)
+        #### 🔮 未来现金流预测方法
+        **ARIMA时间序列预测**：
+        ```
+        FCF(t) = μ + φ₁ × (FCF(t-1) - μ) + εₜ
+        ```
+        - **模型**：ARIMA(1,1,0)模型
+        - **数据来源**：Alphabet过去5年历史FCF数据
+        - **预测期**：未来5年FCF
         
-        **5. 企业价值计算**
-        - 企业价值 = 未来现金流现值 + 终值现值
-        - 股权价值 = 企业价值 - 净债务
+        #### 📈 加权平均资本成本（WACC）计算
+        **核心公式**：
+        ```
+        WACC = (E/V) × Re + (D/V) × Rd × (1-T)
+        ```
+        
+        **组成部分**：
+        - **E**：股权市值
+        - **D**：债务价值
+        - **V**：企业总价值 = E + D
+        - **Re**：权益成本 = Rf + β × (Rm - Rf)
+        - **Rd**：债务成本 = 利息支出 / 总债务
+        - **T**：税率
+        
+        **参数设定**：
+        - **无风险利率（Rf）**：4.2%
+        - **市场风险溢价（Rm-Rf）**：5.5%
+        - **Beta**：通过yfinance获取Alphabet的Beta值
+        
+        #### 🎯 终值（Terminal Value）计算
+        **永续增长模型**：
+        ```
+        终值 = FCF(n+1) / (WACC - g)
+        其中：FCF(n+1) = FCF(n) × (1 + g)
+        ```
+        - **长期增长率（g）**：2.5%（默认值）
+        - **n**：预测期最后一年（第5年）
+        
+        #### 🔍 数据来源
+        - **财务数据**：Financial Modeling Prep API
+        - **股价数据**：yfinance
+        - **市场数据**：实时获取Beta、市值等指标
         """)
     
     if st.button("🚀 运行Alphabet DCF估值分析", use_container_width=True):
@@ -805,21 +908,79 @@ def show_ev_valuation():
         st.markdown("""
         ### EV估值模型方法论
         
-        **1. 企业价值计算**
-        - EV = 市值 + 净债务
-        - 净债务 = 总债务 - 现金及现金等价物
+        #### 📊 核心估值公式
+        ```
+        目标企业价值 = 预测EBITDA × EV/EBITDA倍数
+        目标市值 = 目标企业价值 - 净债务
+        目标股价 = 目标市值 / 流通股数
+        ```
         
-        **2. 可比公司分析**
-        - 选择同行业可比公司（Apple、Microsoft、Amazon、Meta等）
-        - 计算EV/EBITDA、EV/Revenue等倍数
+        #### 🏢 企业价值（Enterprise Value）计算
+        **当前企业价值**：
+        ```
+        EV = 市值 + 总债务 - 现金及现金等价物
+        EV = Market Cap + Total Debt - Cash
+        ```
         
-        **3. 相对估值**
-        - 基于可比公司倍数进行估值
-        - 考虑Alphabet规模、增长性、风险等因素
+        **组成部分**：
+        - **市值（Market Cap）**：当前股价 × 流通股数
+        - **总债务（Total Debt）**：来源于资产负债表
+        - **现金（Cash）**：现金及现金等价物，来源于资产负债表
         
-        **4. 敏感性分析**
-        - 分析关键参数对估值的影响
-        - 提供估值区间
+        #### 📈 EBITDA预测方法
+        **预测公式**：
+        ```
+        预测EBITDA = 预测营收 × EBITDA利润率
+        EBITDA利润率 = TTM EBITDA / TTM营收
+        ```
+        
+        **营收预测**：
+        - **数据来源**：基于PS模型的收入预测模块（revenue_blender）
+        - **预测方法**：多模型融合（线性趋势、ARIMA、可比公司分析）
+        - **预测期**：2025年营收预测
+        
+        #### 🔍 可比公司分析方法
+        **EV/EBITDA倍数计算**：
+        ```
+        行业EV/EBITDA倍数 = median(可比公司EV/EBITDA倍数)
+        ```
+        
+        **可比公司选择标准**：
+        - **行业**：同属科技行业的大型公司
+        - **规模**：市值相当的公司
+        - **业务模式**：具有相似商业模式的公司
+        - **数据来源**：可比公司倍数数据文件（comps_ev_multiples.csv）
+        
+        **倍数应用**：
+        ```
+        目标EV = 预测EBITDA × 行业中位数EV/EBITDA倍数
+        ```
+        
+        #### 🎯 估值步骤详解
+        1. **获取TTM财务数据**：
+           - TTM EBITDA（过去12个月EBITDA）
+           - TTM营收（推算：EBITDA / 利润率）
+           - 计算EBITDA利润率
+        
+        2. **获取营收预测**：
+           - 调用revenue_blender模块
+           - 获取2025年营收预测
+        
+        3. **计算预测EBITDA**：
+           - 预测EBITDA = 预测营收 × TTM EBITDA利润率
+        
+        4. **应用行业倍数**：
+           - 加载可比公司EV/EBITDA倍数
+           - 计算目标企业价值
+        
+        5. **计算目标股价**：
+           - 扣除净债务得到目标市值
+           - 除以流通股数得到目标股价
+        
+        #### 🔍 数据来源
+        - **财务数据**：yfinance实时获取
+        - **可比公司倍数**：预处理的CSV文件
+        - **营收预测**：PS模型的revenue_blender模块
         """)
     
     if st.button("🚀 运行Alphabet EV估值分析", use_container_width=True):
@@ -930,21 +1091,85 @@ def show_ps_valuation():
         st.markdown("""
         ### PS估值模型方法论
         
-        **1. 收入预测**
-        - 基于Alphabet历史收入数据的趋势分析
-        - 使用线性回归和ARIMA模型预测未来收入
+        #### 📊 核心估值公式
+        ```
+        Forward PS = 当前市值 / 预测营收
+        目标股价 = (预测营收 × 目标PS倍数) / 流通股数
+        ```
         
-        **2. 可比公司分析**
-        - 选择同行业可比公司（Apple、Microsoft、Amazon、Meta等）
-        - 计算PS倍数和收入增长率
+        #### 📈 营收预测方法（多模型融合）
+        **数据来源**：revenue_blender模块整合多种预测方法
         
-        **3. 相对估值**
-        - 基于可比公司PS倍数进行估值
-        - 考虑Alphabet收入增长性和盈利能力
+        **1. 线性趋势预测**
+        ```
+        预测营收 = a × 年份 + b
+        其中：a, b 通过历史营收数据线性回归得出
+        ```
         
-        **4. 多模型融合**
-        - 结合多种预测方法
-        - 加权平均得到最终估值
+        **2. ARIMA时间序列预测**
+        ```
+        Revenue(t) = μ + φ₁ × (Revenue(t-1) - μ) + εₜ
+        ```
+        - **模型**：ARIMA模型分析营收时间序列
+        - **数据来源**：Alphabet历史营收数据
+        
+        **3. 可比公司回归分析**
+        ```
+        预测营收增长率 = f(行业平均增长率, 公司特征)
+        ```
+        - **可比公司**：同行业科技公司（Apple、Microsoft、Amazon、Meta等）
+        - **分析指标**：营收增长率、市场份额、业务结构
+        
+        **4. 一致预期（Consensus）**
+        - **数据来源**：分析师一致预期数据
+        - **权重**：基于历史准确性调整
+        
+        **5. 加权融合算法**
+        ```
+        最终营收预测 = w₁×线性趋势 + w₂×ARIMA + w₃×可比公司 + w₄×一致预期
+        ```
+        权重根据各模型历史预测准确性动态调整
+        
+        #### 🎯 PS倍数确定方法
+        **市值计算**：
+        ```
+        当前市值 = 当前股价 × 流通股数
+        ```
+        
+        **Forward PS计算**：
+        ```
+        Forward PS = 当前市值 / 2025年预测营收
+        ```
+        
+        **数据来源**：
+        - **市值数据**：yfinance实时获取
+        - **预测营收**：revenue_blender模块输出
+        
+        #### 📊 估值应用场景
+        **适用性**：
+        - 特别适合科技公司估值
+        - 适用于营收增长强劲但利润波动的公司
+        - 对于Alphabet这类多元化科技公司具有良好适用性
+        
+        **局限性**：
+        - 不直接考虑盈利能力
+        - 需要结合其他估值方法使用
+        
+        #### 🔍 数据验证
+        **营收预测验证**：
+        - 与历史增长趋势对比
+        - 与行业平均水平对比
+        - 与管理层指导对比
+        
+        **合理性检查**：
+        - 预测营收增长率不超过历史最高水平的1.5倍
+        - 考虑宏观经济和行业周期影响
+        
+        #### 🔍 数据来源
+        - **营收预测**：revenue_blender多模型融合
+        - **市值数据**：yfinance实时API
+        - **可比公司数据**：公开财务数据
+        - **一致预期**：金融数据提供商
         """)
     
     if st.button("🚀 运行Alphabet PS估值分析", use_container_width=True):
@@ -1053,29 +1278,110 @@ def show_sotp_valuation():
         st.markdown("""
         ### SOTP (Sum of the Parts) 估值模型方法论
         
-        **SOTP估值模型将Alphabet的业务分为三个主要部分：**
-        
-        **1. Google Services（主营搜索广告）**
-        - 估值方法：PE估值法
-        - 计算公式：`services_value = services_net_income × services_pe_multiple`
-        - 业务范围：Google搜索、YouTube、Google广告等核心业务
-        - 数据来源：Alphabet 2023年财报（营收：$307.4B，营业利润：$101.2B）
-        
-        **2. Google Cloud（云服务）**
-        - 估值方法：EV估值法
-        - 计算公式：`cloud_value = cloud_ebitda × ev_ebitda_multiple - cloud_net_debt`
-        - 业务范围：云计算、AI服务、企业解决方案
-        - 数据来源：Alphabet 2023年财报（营收：$33.1B，营业利润：$0.9B）
-        
-        **3. Other Bets（其他创新项目）**
-        - 估值方法：Real Option估值法
-        - 计算公式：`other_bets_value = Σ(option_value × success_probability)`
-        - 业务范围：Waymo、Verily、Calico、X、Google Fiber等
-        - 详细拆分：基于每个项目的技术成熟度、市场大小、竞争水平、监管风险等因素
-        
-        **4. 最终目标价格计算**
+        #### 📊 核心估值公式
         ```
         Target Price = (Services Valuation + Cloud Valuation + Other Bets Valuation - Net Debt) / Shares Outstanding
+        ```
+        
+        **SOTP估值模型将Alphabet的业务分为三个主要部分：**
+        
+        #### 1️⃣ Google Services（主营搜索广告）
+        **估值方法**：PE估值法
+        **核心公式**：
+        ```
+        Services Value = Services Net Income × PE Multiple
+        PE Multiple = 基于历史数据和可比公司分析确定
+        ```
+        
+        **详细计算步骤**：
+        1. **获取Services净利润**：
+           ```
+           Services Operating Income = Services Revenue × Operating Margin
+           Services Net Income = Services Operating Income × (1 - Tax Rate)
+           ```
+        2. **确定PE倍数**：
+           - 历史PE倍数分析（过去5年数据）
+           - 可比公司PE倍数（Apple、Microsoft等）
+           - 最终PE倍数 = median(历史PE倍数, 可比公司PE倍数)
+        3. **计算Services估值**：
+           ```
+           Services Valuation = Services Net Income × Target PE Multiple
+           ```
+        
+        **业务范围**：Google搜索、YouTube、Google广告等核心业务
+        **数据来源**：Alphabet 2023年财报（营收：$307.4B，营业利润：$101.2B）
+        
+        #### 2️⃣ Google Cloud（云服务）
+        **估值方法**：EV估值法
+        **核心公式**：
+        ```
+        Cloud Value = Cloud EBITDA × EV/EBITDA Multiple
+        ```
+        
+        **详细计算步骤**：
+        1. **计算Cloud EBITDA**：
+           ```
+           Cloud EBITDA = Cloud Operating Income + Depreciation & Amortization
+           ```
+        2. **确定EV/EBITDA倍数**：
+           - 可比云服务公司分析（AWS、Azure、GCP竞品）
+           - 历史倍数趋势分析
+           - 行业中位数倍数
+        3. **计算Cloud估值**：
+           ```
+           Cloud Valuation = Cloud EBITDA × Target EV/EBITDA Multiple
+           ```
+        
+        **业务范围**：云计算、AI服务、企业解决方案
+        **数据来源**：Alphabet 2023年财报（营收：$33.1B，营业利润：$0.9B）
+        
+        #### 3️⃣ Other Bets（其他创新项目）
+        **估值方法**：Real Option估值法（Black-Scholes期权定价模型变体）
+        **核心公式**：
+        ```
+        Other Bets Value = Σ[Option Value × Success Probability]
+        Option Value = S₀ × N(d₁) - K × e^(-rT) × N(d₂)
+        ```
+        
+        **Black-Scholes参数**：
+        ```
+        d₁ = [ln(S₀/K) + (r + σ²/2)×T] / (σ×√T)
+        d₂ = d₁ - σ×√T
+        ```
+        其中：
+        - S₀ = 当前项目价值（基于DCF估算）
+        - K = 执行价格（达到商业化所需投资）
+        - r = 无风险利率
+        - T = 期权到期时间（技术成熟期）
+        - σ = 波动率（基于项目风险等级）
+        
+        **项目分类估值**：
+        1. **Waymo（自动驾驶）**：
+           - 市场规模：$1,000B+
+           - 成功概率：65%
+           - 期权价值计算基于出行市场份额预期
+        
+        2. **Verily（生命科学）**：
+           - 市场规模：$500B+
+           - 成功概率：45%
+           - 基于医疗技术市场潜力
+        
+        3. **其他项目**（Calico、X、Google Fiber等）：
+           - 分别基于各自技术成熟度、市场大小、竞争水平、监管风险等因素
+        
+        **业务范围**：Waymo、Verily、Calico、X、Google Fiber等
+        **详细拆分**：基于每个项目的技术成熟度、市场大小、竞争水平、监管风险等因素
+        
+        #### 4️⃣ 最终目标价格计算
+        ```
+        Total Enterprise Value = Services Valuation + Cloud Valuation + Other Bets Valuation
+        Equity Value = Total Enterprise Value - Net Debt
+        Target Price per Share = Equity Value / Shares Outstanding
+        ```
+        
+        **净债务计算**：
+        ```
+        Net Debt = Total Debt - Cash and Cash Equivalents
         ```
         
         **增强版特性：**
